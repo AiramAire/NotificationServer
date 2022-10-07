@@ -1,6 +1,13 @@
-enum Action {
+export enum Action {
   Email,
   Live_notification,
+}
+
+export enum UserAction {
+  Register,
+  ExamStarts,
+  Unregister,
+  SeeDetails,
 }
 
 export enum NotificationState {
@@ -8,12 +15,24 @@ export enum NotificationState {
   Read,
 }
 
-export class NotificationDto {
-  // TODO: choose number or string
-  notificationId?: number;
-  courseId: number | string;
-  studentId: number | string;
-  professorId: number | string;
+export class ActionPerUser {
+  userId: string;
+  action: Action[];
+  email?: string;
+}
+
+export class ReceivedNotificationDto {
+  courseId: number;
+  studentId: string;
+  professorId: string;
+  action: UserAction;
+  actionsType: ActionPerUser[];
+}
+
+export class CreatedNotificationDto {
+  notificationId: string;
+  courseId: number;
+  userId: string;
   status: NotificationState;
-  actionType: Action[];
+  text: string;
 }
