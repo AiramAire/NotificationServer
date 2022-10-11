@@ -7,7 +7,8 @@ export enum UserAction {
   Register,
   ExamStarts,
   Unregister,
-  SeeDetails,
+  SeeDetailsStudent,
+  SeeDetailsProfessorAction,
 }
 
 export enum NotificationState {
@@ -27,12 +28,15 @@ export class ReceivedNotificationDto {
   professorId: string;
   action: UserAction;
   actionsType: ActionPerUser[];
+  acceptAction: boolean;
 }
 
 export class CreatedNotificationDto {
   notificationId: string;
   courseId: number;
   userId: string;
+  otherUserId: string;
+  action: UserAction;
   status: NotificationState;
   text: string;
 }

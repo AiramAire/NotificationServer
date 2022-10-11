@@ -16,12 +16,26 @@ export class NotificationsService {
     private readonly mailerService: MailerService
   ) {}
 
+  async addNotifications(data: ReceivedNotificationDto[]): Promise<CreatedNotificationDto[]> {
+    if (data.length === 0) return undefined;
+
+    const result: CreatedNotificationDto[] = [];
+    for (let element of data) {
+      result.push(...(await this.addNew(element)));
+    }
+    return result;
+  }
+
   /**
    * Creates 2 notifications (one per user) and sends the corresponding emails
    * @param data obtained data from BE
    * @returns array of new notifications
    */
   async addNew(data: ReceivedNotificationDto): Promise<CreatedNotificationDto[]> {
+    // Bad request
+    if (data.courseId === undefined) return undefined;
+
+    // Result to be send
     const redisResult: CreatedNotificationDto[] = [];
 
     // ------------------ Student notification ------------------
@@ -31,7 +45,8 @@ export class NotificationsService {
       data.action,
       data.courseId,
       true,
-      data.studentId
+      data.studentId,
+      data.acceptAction
     );
 
     // Creating notification to store in Redis
@@ -39,21 +54,25 @@ export class NotificationsService {
       notificationId: stuId, // Random id
       courseId: data.courseId,
       userId: data.studentId,
+      otherUserId: data.professorId,
+      action: data.action,
       text: studentText,
       status: NotificationState.New,
     };
 
     // Storing notification
-    await this.redis.set(stuId, JSON.stringify(newNotificationStudent));
-
-    // Sending email if this option is active
     const studentActionOptions = data.actionsType.find(user => user.userId === data.studentId);
-    if (studentActionOptions.action.includes(Action.Email)) {
-      this.createMail(studentText, data.studentId, studentActionOptions.email);
+    if (studentActionOptions?.action.includes(Action.Live_notification)) {
+      await this.redis.set(stuId, JSON.stringify(newNotificationStudent));
     }
 
-    // Adding notification to the result
-    redisResult.push(JSON.parse(await this.redis.get(stuId)));
+    // Sending email if this option is active
+    if (studentActionOptions?.action.includes(Action.Email)) {
+      this.createMail(studentText, data.studentId, studentActionOptions.email);
+
+      // Adding notification to the result
+      redisResult.push(JSON.parse(await this.redis.get(stuId)));
+    }
 
     // ------------------ Professor notification ------------------
     // Creating professor id and personalized text
@@ -62,7 +81,8 @@ export class NotificationsService {
       data.action,
       data.courseId,
       false,
-      data.studentId
+      data.studentId,
+      data.acceptAction
     );
 
     // Creating notification to store in Redis
@@ -70,21 +90,25 @@ export class NotificationsService {
       notificationId: profId, // Random id
       courseId: data.courseId,
       userId: data.professorId,
+      otherUserId: data.studentId,
+      action: data.action,
       text: professorText,
       status: NotificationState.New,
     };
 
     // Storing notification
-    await this.redis.set(profId, JSON.stringify(newNotificationProfessor));
-
-    // Sending email if this option is active
     const professorActionOptions = data.actionsType.find(user => user.userId === data.professorId);
-    if (professorActionOptions.action.includes(Action.Email)) {
-      this.createMail(professorText, data.professorId, professorActionOptions.email);
+    if (professorActionOptions?.action.includes(Action.Live_notification)) {
+      await this.redis.set(profId, JSON.stringify(newNotificationProfessor));
+
+      // Adding notification to the result
+      redisResult.push(JSON.parse(await this.redis.get(profId)));
     }
 
-    // Adding notification to the result
-    redisResult.push(JSON.parse(await this.redis.get(profId)));
+    // Sending email if this option is active
+    if (professorActionOptions?.action.includes(Action.Email)) {
+      this.createMail(professorText, data.professorId, professorActionOptions.email);
+    }
 
     // ------------------ Result ------------------
     return redisResult;
@@ -92,15 +116,17 @@ export class NotificationsService {
 
   /**
    * Obtains notification in Redis by id and updates status to 'Read'
-   * @param notificationId id of the notification to update
-   * @returns updatedNotification -> TODO: Or nothing?
+   * @param notificationIds ids of the notifications to update
+   * @returns updatedNotification
    */
-  async update(notificationId: string): Promise<CreatedNotificationDto> {
-    const redisData = JSON.parse(await this.redis.get(notificationId));
-    redisData.status = NotificationState.Read;
-    await this.redis.set(notificationId, JSON.stringify(redisData));
-    const redisDataUpdated = await this.redis.get(notificationId);
-    return JSON.parse(redisDataUpdated);
+  async update(notificationIds: string[]): Promise<void> {
+    if (notificationIds.length === 0) return undefined;
+
+    for (let notificationId of notificationIds) {
+      const redisData: CreatedNotificationDto = JSON.parse(await this.redis.get(notificationId));
+      redisData.status = NotificationState.Read;
+      await this.redis.set(notificationId, JSON.stringify(redisData));
+    }
   }
 
   /**
@@ -109,19 +135,25 @@ export class NotificationsService {
    * @param courseId id of the course
    * @param isStudent is student value
    * @param studentId id of the student
+   * @param acceptAction boolean to show if the user action is allowed or not
    * @returns Text to fill the email and/or notification
    */
   createNotificationsText(
     action: UserAction,
     courseId: number,
     isStudent: boolean,
-    studentId: string
+    studentId: string,
+    acceptAction: boolean
   ): string {
     let textToShow = '';
     switch (action) {
       case UserAction.Register:
         if (isStudent)
-          textToShow = 'You have been registered in a new course with the id: ' + courseId;
+          if (acceptAction)
+            textToShow = 'You have been registered in a new course with the id: ' + courseId;
+          else
+            textToShow =
+              'You registration request in course with the id: ' + courseId + ' has been rejected';
         else
           textToShow =
             'Student ' + studentId + ' has been registered in your course with id: ' + courseId;
@@ -131,20 +163,27 @@ export class NotificationsService {
         else textToShow = 'Your exam will start soon, From your course: ' + courseId;
         break;
       case UserAction.Unregister:
-        if (isStudent) textToShow = 'You haveen unregistered in course with the id: ' + courseId;
+        if (isStudent) textToShow = 'You have been unregistered in course with the id: ' + courseId;
         else
           textToShow =
             'Student ' + studentId + ' has been unregistered in your course with id: ' + courseId;
         break;
-      case UserAction.SeeDetails:
-        if (isStudent)
-          textToShow = 'You have request access to details for course with the id: ' + courseId;
-        else
+      case UserAction.SeeDetailsStudent:
+        if (!isStudent)
           textToShow =
             'Student ' +
             studentId +
             ' has request access to details for your course with id: ' +
             courseId;
+        break;
+      case UserAction.SeeDetailsProfessorAction:
+        if (isStudent)
+          if (acceptAction)
+            textToShow =
+              'You have been granted access to details for course with the id: ' + courseId;
+          else
+            textToShow =
+              'Your access request in course with the id: ' + courseId + ' has been rejected';
         break;
     }
 

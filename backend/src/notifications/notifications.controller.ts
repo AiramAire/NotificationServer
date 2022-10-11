@@ -4,6 +4,14 @@ import { ClientProxy, ClientProxyFactory, Transport } from '@nestjs/microservice
 import { CreatedNotificationDto, ReceivedNotificationDto } from './dto/notification.dto';
 import { NotificationsService } from './notifications.service';
 
+export class ReceivedDataNotification {
+  body: ReceivedNotificationDto[];
+}
+
+export class ReceviedDataIds {
+  body: string[];
+}
+
 @Controller('notifications')
 export class NotificationsController {
   private client: ClientProxy;
@@ -20,20 +28,13 @@ export class NotificationsController {
     });
   }
 
-  @Post('addNew')
-  async addNew(@Body() data: ReceivedNotificationDto): Promise<CreatedNotificationDto[]> {
-    return this.notificationsService.addNew(data);
+  @Post('addNotifications')
+  async addNew(@Body() data: ReceivedDataNotification): Promise<CreatedNotificationDto[]> {
+    return this.notificationsService.addNotifications(data.body);
   }
 
   @Post('update')
-  async update(@Param('id') id: string): Promise<CreatedNotificationDto> {
-    return this.notificationsService.update(id);
-  }
-
-  @Get()
-  async getHello() {
-    await this.redis.set('key', 'Redis data!');
-    const redisData = await this.redis.get('key');
-    return { redisData };
+  async update(@Body() data: ReceviedDataIds): Promise<void> {
+    await this.notificationsService.update(data.body);
   }
 }
