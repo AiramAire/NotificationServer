@@ -17,15 +17,16 @@ export enum NotificationState {
 }
 
 export class ActionPerUser {
-  userId: string;
+  username: string;
   action: Action[];
   email?: string;
 }
 
 export class ReceivedNotificationDto {
-  courseId: number;
-  studentId: string;
-  professorId: string;
+  courseId: string;
+  courseName: string;
+  student: string;
+  professor: string;
   action: UserAction;
   actionsType: ActionPerUser[];
   acceptAction: boolean;
@@ -33,9 +34,10 @@ export class ReceivedNotificationDto {
 
 export class CreatedNotificationDto {
   notificationId: string;
-  courseId: number;
-  userId: string;
-  otherUserId: string;
+  courseId: string;
+  courseName: string;
+  username: string;
+  otherUser: string;
   action: UserAction;
   status: NotificationState;
   text: string;

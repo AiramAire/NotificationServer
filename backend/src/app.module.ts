@@ -31,7 +31,7 @@ import { EjsAdapter } from '@nestjs-modules/mailer/dist/adapters/ejs.adapter';
       defaults: {
         from: '"No Reply" <no-reply@gmail.com>',
       },
-      preview: true,
+      preview: false,
       template: {
         dir: process.cwd() + '/template/',
         adapter: new EjsAdapter(),

@@ -16,6 +16,11 @@ export class NotificationsService {
     private readonly mailerService: MailerService
   ) {}
 
+  /**
+   * Creates the notifications calling the auxiliar method "addNew"
+   * @param data notification array received
+   * @returns
+   */
   async addNotifications(data: ReceivedNotificationDto[]): Promise<CreatedNotificationDto[]> {
     if (data.length === 0) return undefined;
 
@@ -23,11 +28,12 @@ export class NotificationsService {
     for (let element of data) {
       result.push(...(await this.addNew(element)));
     }
+
     return result;
   }
 
   /**
-   * Creates 2 notifications (one per user) and sends the corresponding emails
+   * Creates 1 or 2 notifications (per user) and sends the corresponding emails
    * @param data obtained data from BE
    * @returns array of new notifications
    */
@@ -44,8 +50,9 @@ export class NotificationsService {
     const studentText: string = this.createNotificationsText(
       data.action,
       data.courseId,
+      data.courseName,
       true,
-      data.studentId,
+      data.student,
       data.acceptAction
     );
 
@@ -53,22 +60,23 @@ export class NotificationsService {
     const newNotificationStudent: CreatedNotificationDto = {
       notificationId: stuId, // Random id
       courseId: data.courseId,
-      userId: data.studentId,
-      otherUserId: data.professorId,
+      courseName: data.courseName,
+      username: data.student,
+      otherUser: data.professor,
       action: data.action,
       text: studentText,
       status: NotificationState.New,
     };
 
     // Storing notification
-    const studentActionOptions = data.actionsType.find(user => user.userId === data.studentId);
+    const studentActionOptions = data.actionsType.find(user => user.username === data.student);
     if (studentActionOptions?.action.includes(Action.Live_notification)) {
       await this.redis.set(stuId, JSON.stringify(newNotificationStudent));
     }
 
     // Sending email if this option is active
     if (studentActionOptions?.action.includes(Action.Email)) {
-      this.createMail(studentText, data.studentId, studentActionOptions.email);
+      this.createMail(studentText, data.student, studentActionOptions.email);
 
       // Adding notification to the result
       redisResult.push(JSON.parse(await this.redis.get(stuId)));
@@ -80,8 +88,9 @@ export class NotificationsService {
     const professorText: string = this.createNotificationsText(
       data.action,
       data.courseId,
+      data.courseName,
       false,
-      data.studentId,
+      data.student,
       data.acceptAction
     );
 
@@ -89,15 +98,16 @@ export class NotificationsService {
     const newNotificationProfessor: CreatedNotificationDto = {
       notificationId: profId, // Random id
       courseId: data.courseId,
-      userId: data.professorId,
-      otherUserId: data.studentId,
+      courseName: data.courseName,
+      username: data.professor,
+      otherUser: data.student,
       action: data.action,
       text: professorText,
       status: NotificationState.New,
     };
 
     // Storing notification
-    const professorActionOptions = data.actionsType.find(user => user.userId === data.professorId);
+    const professorActionOptions = data.actionsType.find(user => user.username === data.professor);
     if (professorActionOptions?.action.includes(Action.Live_notification)) {
       await this.redis.set(profId, JSON.stringify(newNotificationProfessor));
 
@@ -107,7 +117,7 @@ export class NotificationsService {
 
     // Sending email if this option is active
     if (professorActionOptions?.action.includes(Action.Email)) {
-      this.createMail(professorText, data.professorId, professorActionOptions.email);
+      this.createMail(professorText, data.professor, professorActionOptions.email);
     }
 
     // ------------------ Result ------------------
@@ -133,57 +143,62 @@ export class NotificationsService {
    * Creates the text for the email and/or notification
    * @param action web action / purpose of the notification
    * @param courseId id of the course
+   * @param courseName name of the course
    * @param isStudent is student value
-   * @param studentId id of the student
+   * @param student id of the student
    * @param acceptAction boolean to show if the user action is allowed or not
    * @returns Text to fill the email and/or notification
    */
   createNotificationsText(
     action: UserAction,
-    courseId: number,
+    courseId: string, // In case it could be needed
+    courseName: string,
     isStudent: boolean,
-    studentId: string,
+    student: string,
     acceptAction: boolean
   ): string {
     let textToShow = '';
     switch (action) {
+      // TODO: Not implemented yet
       case UserAction.Register:
         if (isStudent)
-          if (acceptAction)
-            textToShow = 'You have been registered in a new course with the id: ' + courseId;
-          else
-            textToShow =
-              'You registration request in course with the id: ' + courseId + ' has been rejected';
+          textToShow = acceptAction
+            ? 'You have been registered in a new course: "' + courseName + '"'
+            : 'You registration request in course: "' + courseName + '"';
         else
           textToShow =
-            'Student ' + studentId + ' has been registered in your course with id: ' + courseId;
+            'Student ' + student + ' has been registered in your course: "' + courseName + '"';
         break;
-      case UserAction.ExamStarts:
-        if (isStudent) textToShow = 'A new exam will start soon! Course ' + courseId;
-        else textToShow = 'Your exam will start soon, From your course: ' + courseId;
-        break;
+      // TODO: Not implemented yet and there are no future plans to do so
+      // case UserAction.ExamStarts:
+      //   textToShow = isStudent
+      //     ? 'A new exam will start soon! Course: ' + courseName + ' (id: ' + courseId + ')'
+      //     : 'Your exam will start soon, From your course: ' +
+      //       courseName +
+      //       ' (id: ' +
+      //       courseId +
+      //       ')';
+      //   break;
+      // TODO: Not implemented yet
       case UserAction.Unregister:
-        if (isStudent) textToShow = 'You have been unregistered in course with the id: ' + courseId;
-        else
-          textToShow =
-            'Student ' + studentId + ' has been unregistered in your course with id: ' + courseId;
+        textToShow = isStudent
+          ? 'You have been unregistered in course: "' + courseName + '"'
+          : 'Student ' + student + ' has been unregistered in your course: "' + courseName + '"';
         break;
       case UserAction.SeeDetailsStudent:
         if (!isStudent)
           textToShow =
             'Student ' +
-            studentId +
-            ' has request access to details for your course with id: ' +
-            courseId;
+            student +
+            ' has request access to details for your course: "' +
+            courseName +
+            '"';
         break;
       case UserAction.SeeDetailsProfessorAction:
-        if (isStudent)
-          if (acceptAction)
-            textToShow =
-              'You have been granted access to details for course with the id: ' + courseId;
-          else
-            textToShow =
-              'Your access request in course with the id: ' + courseId + ' has been rejected';
+        textToShow =
+          acceptAction && isStudent
+            ? 'You have been granted access to details for course: ' + courseName + '"'
+            : 'Your access request in course "' + courseName + '" has been rejected';
         break;
     }
 
@@ -201,7 +216,7 @@ export class NotificationsService {
       .sendMail({
         to: 'academinimailtest@gmail.com', // to: email
         from: 'academinimailtest@gmail.com', // from ?
-        subject: 'You (id: ' + userId + ') have 1 new notification ✔',
+        subject: 'Hi ' + userId + ', you have 1 new notification ✔',
         template: 'notification', // The `.pug`, `.ejs` or `.hbs` extension is appended automatically.
         context: {
           text: textToShow,
