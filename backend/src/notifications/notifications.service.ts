@@ -164,7 +164,7 @@ export class NotificationsService {
         if (isStudent)
           textToShow = acceptAction
             ? 'You have been registered in a new course: "' + courseName + '"'
-            : 'You registration request in course: "' + courseName + '"';
+            : 'Your registration request in course: "' + courseName + '" has been rejected';
         else
           textToShow =
             'Student ' + student + ' has been registered in your course: "' + courseName + '"';
@@ -197,7 +197,7 @@ export class NotificationsService {
       case UserAction.SeeDetailsProfessorAction:
         textToShow =
           acceptAction && isStudent
-            ? 'You have been granted access to details for course: ' + courseName + '"'
+            ? 'You have been granted access to details for course: "' + courseName + '"'
             : 'Your access request in course "' + courseName + '" has been rejected';
         break;
     }
@@ -211,12 +211,12 @@ export class NotificationsService {
    * @param userId user to send the notification to
    * @param email user email
    */
-  createMail(textToShow: string, userId: string, email: string): void {
+  createMail(textToShow: string, username: string, email: string): void {
     this.mailerService
       .sendMail({
         to: 'academinimailtest@gmail.com', // to: email
         from: 'academinimailtest@gmail.com', // from ?
-        subject: 'Hi ' + userId + ', you have 1 new notification ✔',
+        subject: 'Hi ' + username + ', you have 1 new notification ✔',
         template: 'notification', // The `.pug`, `.ejs` or `.hbs` extension is appended automatically.
         context: {
           text: textToShow,

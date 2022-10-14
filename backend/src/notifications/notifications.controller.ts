@@ -1,5 +1,5 @@
 import { InjectRedis, Redis } from '@nestjs-modules/ioredis';
-import { Body, Controller, Get, Param, Post } from '@nestjs/common';
+import { Body, Controller, Post } from '@nestjs/common';
 import { ClientProxy, ClientProxyFactory, Transport } from '@nestjs/microservices';
 import { CreatedNotificationDto, ReceivedNotificationDto } from './dto/notification.dto';
 import { NotificationsService } from './notifications.service';
@@ -29,7 +29,9 @@ export class NotificationsController {
   }
 
   @Post('addNotifications')
-  async addNew(@Body() data: ReceivedDataNotification): Promise<CreatedNotificationDto[]> {
+  async addNotifications(
+    @Body() data: ReceivedDataNotification
+  ): Promise<CreatedNotificationDto[]> {
     return this.notificationsService.addNotifications(data.body);
   }
 
