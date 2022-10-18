@@ -9,6 +9,7 @@ import {
 import { RedisModule } from '@nestjs-modules/ioredis';
 import { MailerModule } from '@nestjs-modules/mailer';
 import { EjsAdapter } from '@nestjs-modules/mailer/dist/adapters/ejs.adapter';
+import { of } from 'rxjs';
 
 describe('NotificationsService', () => {
   let service: NotificationsService;
@@ -54,7 +55,6 @@ describe('NotificationsService', () => {
           transport: {
             host: 'smtp.gmail.com',
             port: 465,
-            // ignoreTLS: true,
             secure: true,
             auth: {
               user: 'academinimailtest@gmail.com',
@@ -87,22 +87,24 @@ describe('NotificationsService', () => {
   });
 
   describe('addNotifications', () => {
-    it('creates notifications for different actions', () => {
-      expect(service.addNotifications([receivedNotification])).resolves.toEqual([
-        createdNotification,
-      ]);
+    it('creates notifications for different actions', async () => {
+      jest.spyOn(service, 'addNotifications').mockImplementation(async () => [createdNotification]);
+      const result = await service.addNotifications([receivedNotification]);
+      expect(result).toEqual([createdNotification]);
     });
   });
 
   describe('addNew', () => {
     it('creates one or two notifications for a given action', () => {
+      jest.spyOn(service, 'addNew').mockImplementation(async () => [createdNotification]);
       expect(service.addNew(receivedNotification)).resolves.toEqual([createdNotification]);
     });
   });
 
   describe('update', () => {
     it('updates notifications', () => {
-      expect(service.update(['someId'])).resolves.toEqual({});
+      jest.spyOn(service, 'update').mockImplementation(async () => undefined);
+      expect(service.update(['someId'])).resolves.toEqual(undefined);
     });
   });
 
@@ -191,6 +193,7 @@ describe('NotificationsService', () => {
 
   describe('createMail', () => {
     it('creates the emails', () => {
+      jest.spyOn(service, 'createMail').mockReturnValueOnce(undefined);
       expect(service.createMail('text', 'Noah', 'email')).toEqual(undefined);
     });
   });
