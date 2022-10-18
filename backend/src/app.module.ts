@@ -18,11 +18,10 @@ import { EjsAdapter } from '@nestjs-modules/mailer/dist/adapters/ejs.adapter';
       transport: {
         host: 'smtp.gmail.com',
         port: 465,
-        // ignoreTLS: true,
         secure: true,
         auth: {
-          user: 'academinimailtest@gmail.com',
-          pass: 'tpdrdbvplrfcgpfn',
+          user: '',
+          pass: '',
         },
       },
       options: {
