@@ -20,8 +20,8 @@ import { EjsAdapter } from '@nestjs-modules/mailer/dist/adapters/ejs.adapter';
         port: 465,
         secure: true,
         auth: {
-          user: '',
-          pass: '',
+          user: 'academinimailtest@gmail.com',
+          pass: 'tpdrdbvplrfcgpfn',
         },
       },
       options: {
