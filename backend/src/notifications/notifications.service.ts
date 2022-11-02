@@ -1,6 +1,7 @@
-import { InjectRedis, Redis } from '@nestjs-modules/ioredis';
 import { MailerService } from '@nestjs-modules/mailer';
+import { InjectQueue } from '@nestjs/bull';
 import { Injectable } from '@nestjs/common';
+import { Queue } from 'bull';
 import {
   Action,
   CreatedNotificationDto,
@@ -12,7 +13,7 @@ import {
 @Injectable()
 export class NotificationsService {
   constructor(
-    @InjectRedis() private readonly redis: Redis,
+    @InjectQueue('done-notifications-queue') private doneQueue: Queue,
     private readonly mailerService: MailerService
   ) {}
 
@@ -21,15 +22,13 @@ export class NotificationsService {
    * @param data notification array received
    * @returns
    */
-  async addNotifications(data: ReceivedNotificationDto[]): Promise<CreatedNotificationDto[]> {
-    if (data.length === 0) return undefined;
+  async addNotifications(data: ReceivedNotificationDto[]): Promise<void | number> {
+    // Bad request -> testing prupose
+    if (data.length === 0) return -1;
 
-    const result: CreatedNotificationDto[] = [];
     for (let element of data) {
-      result.push(...(await this.addNew(element)));
+      await this.addNew(element);
     }
-
-    return result;
   }
 
   /**
@@ -37,9 +36,9 @@ export class NotificationsService {
    * @param data obtained data from BE
    * @returns array of new notifications
    */
-  async addNew(data: ReceivedNotificationDto): Promise<CreatedNotificationDto[]> {
-    // Bad request
-    if (data.courseId === undefined) return undefined;
+  async addNew(data: ReceivedNotificationDto): Promise<void | number> {
+    // Bad request -> testing prupose
+    if (data === undefined) return -1;
 
     // Result to be send
     const redisResult: CreatedNotificationDto[] = [];
@@ -61,8 +60,8 @@ export class NotificationsService {
       notificationId: stuId, // Random id
       courseId: data.courseId,
       courseName: data.courseName,
-      username: data.student,
-      otherUser: data.professor,
+      to: data.student,
+      from: data.professor,
       action: data.action,
       text: studentText,
       status: NotificationState.New,
@@ -71,15 +70,12 @@ export class NotificationsService {
     // Storing notification
     const studentActionOptions = data.actionsType.find(user => user.username === data.student);
     if (studentActionOptions?.action.includes(Action.Live_notification)) {
-      await this.redis.set(stuId, JSON.stringify(newNotificationStudent));
+      this.storeNotificationInQueue('doneNotifications', [newNotificationStudent]);
     }
 
     // Sending email if this option is active
     if (studentActionOptions?.action.includes(Action.Email)) {
       this.createMail(studentText, data.student, studentActionOptions.email);
-
-      // Adding notification to the result
-      redisResult.push(JSON.parse(await this.redis.get(stuId)));
     }
 
     // ------------------ Professor notification ------------------
@@ -99,8 +95,8 @@ export class NotificationsService {
       notificationId: profId, // Random id
       courseId: data.courseId,
       courseName: data.courseName,
-      username: data.professor,
-      otherUser: data.student,
+      to: data.professor,
+      from: data.student,
       action: data.action,
       text: professorText,
       status: NotificationState.New,
@@ -109,33 +105,12 @@ export class NotificationsService {
     // Storing notification
     const professorActionOptions = data.actionsType.find(user => user.username === data.professor);
     if (professorActionOptions?.action.includes(Action.Live_notification)) {
-      await this.redis.set(profId, JSON.stringify(newNotificationProfessor));
-
-      // Adding notification to the result
-      redisResult.push(JSON.parse(await this.redis.get(profId)));
+      this.storeNotificationInQueue('doneNotifications', [newNotificationProfessor]);
     }
 
     // Sending email if this option is active
     if (professorActionOptions?.action.includes(Action.Email)) {
       this.createMail(professorText, data.professor, professorActionOptions.email);
-    }
-
-    // ------------------ Result ------------------
-    return redisResult;
-  }
-
-  /**
-   * Obtains notification in Redis by id and updates status to 'Read'
-   * @param notificationIds ids of the notifications to update
-   * @returns updatedNotification
-   */
-  async update(notificationIds: string[]): Promise<void> {
-    if (notificationIds.length === 0) return undefined;
-
-    for (let notificationId of notificationIds) {
-      const redisData: CreatedNotificationDto = JSON.parse(await this.redis.get(notificationId));
-      redisData.status = NotificationState.Read;
-      await this.redis.set(notificationId, JSON.stringify(redisData));
     }
   }
 
@@ -159,7 +134,6 @@ export class NotificationsService {
   ): string {
     let textToShow = '';
     switch (action) {
-      // TODO: Not implemented yet
       case UserAction.Register:
         if (isStudent)
           textToShow = acceptAction
@@ -169,17 +143,6 @@ export class NotificationsService {
           textToShow =
             'Student ' + student + ' has been registered in your course: "' + courseName + '"';
         break;
-      // TODO: Not implemented yet and there are no future plans to do so
-      // case UserAction.ExamStarts:
-      //   textToShow = isStudent
-      //     ? 'A new exam will start soon! Course: ' + courseName + ' (id: ' + courseId + ')'
-      //     : 'Your exam will start soon, From your course: ' +
-      //       courseName +
-      //       ' (id: ' +
-      //       courseId +
-      //       ')';
-      //   break;
-      // TODO: Not implemented yet
       case UserAction.Unregister:
         textToShow = isStudent
           ? 'You have been unregistered in course: "' + courseName + '"'
@@ -194,12 +157,6 @@ export class NotificationsService {
             courseName +
             '"';
         break;
-      case UserAction.SeeDetailsProfessorAction:
-        textToShow =
-          acceptAction && isStudent
-            ? 'You have been granted access to details for course: "' + courseName + '"'
-            : 'Your access request in course "' + courseName + '" has been rejected';
-        break;
     }
 
     return textToShow;
@@ -211,18 +168,33 @@ export class NotificationsService {
    * @param userId user to send the notification to
    * @param email user email
    */
-  createMail(textToShow: string, username: string, email: string): void {
-    this.mailerService
-      .sendMail({
-        to: 'academinimailtest@gmail.com', // to: email
-        from: 'academinimailtest@gmail.com', // from ?
-        subject: 'Hi ' + username + ', you have 1 new notification ✔',
-        template: 'notification', // The `.pug`, `.ejs` or `.hbs` extension is appended automatically.
-        context: {
-          text: textToShow,
-        },
-      })
-      .then(() => {})
-      .catch(() => {});
+  createMail(textToShow: string, username: string, email: string): any {
+    this.mailerService.sendMail({
+      to: 'academinimailtest@gmail.com', // to: email
+      from: 'academinimailtest@gmail.com', // from ?
+      subject: 'Hi ' + username + ', you have 1 new notification ✔',
+      template: 'notification', // The `.pug`, `.ejs` or `.hbs` extension is appended automatically.
+      context: {
+        text: textToShow,
+      },
+    });
+  }
+
+  /**
+   * Adds the created notification to the related queue
+   * @param queues queue to send data to
+   * @param notification notification to send
+   */
+  storeNotificationInQueue(queues: string, notification: CreatedNotificationDto[]): void {
+    this.doneQueue.add(
+      queues,
+      {
+        notifications: notification,
+      },
+      {
+        attempts: 5,
+        backoff: 5000,
+      }
+    );
   }
 }

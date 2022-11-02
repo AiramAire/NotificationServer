@@ -1,38 +1,17 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { ReceivedNotificationDto, CreatedNotificationDto, Action } from './dto/notification.dto';
-import { NotificationsController } from './notifications.controller';
+import { NotificationsController, ReceivedDataNotification } from './notifications.controller';
 import { NotificationsService } from './notifications.service';
 import { RedisModule } from '@nestjs-modules/ioredis';
+import { BullModule } from '@nestjs/bull';
+import { MailerModule } from '@nestjs-modules/mailer';
+import { EjsAdapter } from '@nestjs-modules/mailer/dist/adapters/ejs.adapter';
 
 describe('NotificationsController', () => {
   let controller: NotificationsController;
   let service: NotificationsService;
 
-  const createdNotification: ReceivedNotificationDto = {
-    courseId: 'courseId',
-    courseName: 'courseName',
-    student: 'Noah',
-    professor: 'Arrow',
-    action: 3,
-    actionsType: [
-      {
-        username: 'Arrow',
-        action: [Action.Email, Action.Live_notification],
-        email: 'email',
-      },
-    ],
-    acceptAction: true,
-  };
-
-  const receivedNotification: CreatedNotificationDto = {
-    notificationId: '0',
-    courseId: 'courseId',
-    courseName: 'courseName',
-    username: 'Arrow',
-    otherUser: 'Noah',
-    action: 3,
-    status: 0,
-    text: 'some text',
+  const data: ReceivedDataNotification = {
+    body: [],
   };
 
   beforeEach(async () => {
@@ -45,16 +24,36 @@ describe('NotificationsController', () => {
             port: 6360,
           },
         }),
-      ],
-      providers: [
-        {
-          provide: NotificationsService,
-          useValue: {
-            addNotifications: jest.fn().mockResolvedValue(receivedNotification),
-            update: jest.fn().mockResolvedValue(receivedNotification),
+        BullModule.registerQueue({
+          name: 'done-notifications-queue',
+        }),
+        MailerModule.forRoot({
+          transport: {
+            host: 'smtp.gmail.com',
+            port: 465,
+            secure: true,
+            auth: {
+              user: 'academinimailtest@gmail.com',
+              pass: 'tpdrdbvplrfcgpfn',
+            },
           },
-        },
+          options: {
+            strict: false,
+          },
+          defaults: {
+            from: '"No Reply" <no-reply@gmail.com>',
+          },
+          preview: false,
+          template: {
+            dir: process.cwd() + '/template/',
+            adapter: new EjsAdapter(),
+            options: {
+              strict: true,
+            },
+          },
+        }),
       ],
+      providers: [NotificationsService],
     }).compile();
 
     controller = module.get<NotificationsController>(NotificationsController);
@@ -67,16 +66,9 @@ describe('NotificationsController', () => {
 
   describe('addNotifications', () => {
     it('adds new notifications', async () => {
-      expect(service.addNotifications([createdNotification])).resolves.toEqual(
-        receivedNotification
-      );
-    });
-  });
-
-  describe('update', () => {
-    it('updates given notifications', async () => {
-      receivedNotification.status = 1;
-      expect(service.update([createdNotification.courseId])).resolves.toEqual(receivedNotification);
+      const spyData = jest.spyOn(service, 'addNotifications');
+      controller.addNotifications(data);
+      expect(spyData).toHaveBeenCalledWith([]);
     });
   });
 });

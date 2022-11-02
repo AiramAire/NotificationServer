@@ -36,8 +36,8 @@ export class CreatedNotificationDto {
   notificationId: string;
   courseId: string;
   courseName: string;
-  username: string;
-  otherUser: string;
+  from: string;
+  to: string;
   action: UserAction;
   status: NotificationState;
   text: string;

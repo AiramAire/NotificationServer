@@ -1,18 +1,24 @@
-import { Test, TestingModule } from '@nestjs/testing';
-import { NotificationsService } from './notifications.service';
-import {
-  ReceivedNotificationDto,
-  UserAction,
-  CreatedNotificationDto,
-  Action,
-} from './dto/notification.dto';
 import { RedisModule } from '@nestjs-modules/ioredis';
-import { MailerModule } from '@nestjs-modules/mailer';
+import { MailerModule, MailerService } from '@nestjs-modules/mailer';
 import { EjsAdapter } from '@nestjs-modules/mailer/dist/adapters/ejs.adapter';
-import { of } from 'rxjs';
+import { BullModule } from '@nestjs/bull';
+import { Test, TestingModule } from '@nestjs/testing';
+import { DoneConsumer } from './consumer-producer';
+import { Action, ReceivedNotificationDto, UserAction } from './dto/notification.dto';
+import { NotificationsService } from './notifications.service';
 
 describe('NotificationsService', () => {
   let service: NotificationsService;
+  let mail: MailerService;
+  let mockQueue = {
+    add: jest.fn(),
+    process: jest.fn(),
+    on: jest.fn(),
+  };
+
+  const promise = new Promise(() => {
+    return { to: 'Noah', from: 'Noah', subject: 'email', text: 'text' };
+  });
 
   const receivedNotification: ReceivedNotificationDto = {
     courseId: 'courseId',
@@ -23,33 +29,41 @@ describe('NotificationsService', () => {
     actionsType: [
       {
         username: 'Arrow',
-        action: [Action.Live_notification],
+        action: [Action.Live_notification, Action.Email],
         email: 'email',
       },
     ],
     acceptAction: true,
   };
 
-  const createdNotification: CreatedNotificationDto = {
-    notificationId: '0',
+  const receivedNotificationStudent: ReceivedNotificationDto = {
     courseId: 'courseId',
     courseName: 'courseName',
-    username: 'Arrow',
-    otherUser: 'Noah',
+    student: 'Noah',
+    professor: 'Arrow',
     action: 3,
-    status: 0,
-    text: 'some text',
+    actionsType: [
+      {
+        username: 'Noah',
+        action: [Action.Live_notification, Action.Email],
+        email: 'email',
+      },
+    ],
+    acceptAction: true,
   };
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
-      providers: [NotificationsService],
+      providers: [NotificationsService, DoneConsumer],
       imports: [
         RedisModule.forRoot({
           config: {
             host: 'localhost',
             port: 6360,
           },
+        }),
+        BullModule.registerQueue({
+          name: 'done-notifications-queue',
         }),
         MailerModule.forRoot({
           transport: {
@@ -77,9 +91,15 @@ describe('NotificationsService', () => {
           },
         }),
       ],
-    }).compile();
+    })
+      .overrideProvider('done-notifications-queue')
+      .useValue({ mockQueue })
+      .compile();
 
     service = module.get<NotificationsService>(NotificationsService);
+    mail = module.get<MailerService>(MailerService);
+
+    jest.spyOn(mail, 'sendMail').mockReturnValue(promise);
   });
 
   it('should be defined', () => {
@@ -87,24 +107,58 @@ describe('NotificationsService', () => {
   });
 
   describe('addNotifications', () => {
-    it('creates notifications for different actions', async () => {
-      jest.spyOn(service, 'addNotifications').mockImplementation(async () => [createdNotification]);
-      const result = await service.addNotifications([receivedNotification]);
-      expect(result).toEqual([createdNotification]);
+    it('creates notifications for different actions from student to professor', async () => {
+      const data = jest.spyOn(service, 'storeNotificationInQueue');
+      await service.addNotifications([receivedNotification]);
+      expect(data).toHaveBeenCalled();
+    });
+
+    it('creates notifications for different actions from professor to student', async () => {
+      const data = jest.spyOn(service, 'storeNotificationInQueue');
+      await service.addNotifications([receivedNotificationStudent]);
+      expect(data).toHaveBeenCalled();
+    });
+
+    it('fails because the data received is empty', async () => {
+      expect(service.addNotifications([])).resolves.toEqual(-1);
+    });
+
+    it('does not create the professor notification/email because the actions received are empty', async () => {
+      const data = jest.spyOn(service, 'storeNotificationInQueue');
+      const data2 = jest.spyOn(service, 'createMail');
+
+      const wrongActions = { ...receivedNotification };
+      wrongActions.actionsType = [];
+
+      service.addNotifications([wrongActions]);
+
+      expect(data).not.toHaveBeenCalled();
+      expect(data2).not.toHaveBeenCalled();
+    });
+
+    it('does not create the student notification/email because the actions received are empty', async () => {
+      const data = jest.spyOn(service, 'storeNotificationInQueue');
+      const data2 = jest.spyOn(service, 'createMail');
+
+      const wrongActions = { ...receivedNotificationStudent };
+      wrongActions.actionsType = [];
+
+      service.addNotifications([wrongActions]);
+
+      expect(data).not.toHaveBeenCalled();
+      expect(data2).not.toHaveBeenCalled();
     });
   });
 
   describe('addNew', () => {
-    it('creates one or two notifications for a given action', () => {
-      jest.spyOn(service, 'addNew').mockImplementation(async () => [createdNotification]);
-      expect(service.addNew(receivedNotification)).resolves.toEqual([createdNotification]);
+    it('creates one or two notifications for a given action', async () => {
+      const data = jest.spyOn(service, 'storeNotificationInQueue');
+      await service.addNew(receivedNotification);
+      expect(data).toHaveBeenCalled();
     });
-  });
 
-  describe('update', () => {
-    it('updates notifications', () => {
-      jest.spyOn(service, 'update').mockImplementation(async () => undefined);
-      expect(service.update(['someId'])).resolves.toEqual(undefined);
+    it('fails because the data received is wrong', async () => {
+      expect(service.addNew(undefined)).resolves.toEqual(-1);
     });
   });
 
@@ -136,6 +190,12 @@ describe('NotificationsService', () => {
             service.createNotificationsText(UserAction.Unregister, '', 'math', true, 'Noah', true)
           ).toEqual('You have been unregistered in course: "math"');
         });
+
+        it('user is not student', () => {
+          expect(
+            service.createNotificationsText(UserAction.Unregister, '', 'math', false, 'Noah', true)
+          ).toEqual('Student Noah has been unregistered in your course: "math"');
+        });
       });
 
       describe('see details action', () => {
@@ -153,34 +213,6 @@ describe('NotificationsService', () => {
         });
       });
 
-      describe('see details professor action', () => {
-        it('user is student and the action is accepted', () => {
-          expect(
-            service.createNotificationsText(
-              UserAction.SeeDetailsProfessorAction,
-              '',
-              'math',
-              true,
-              'Noah',
-              true
-            )
-          ).toEqual('You have been granted access to details for course: "math"');
-        });
-
-        it('user is student and the action is rejected', () => {
-          expect(
-            service.createNotificationsText(
-              UserAction.SeeDetailsProfessorAction,
-              '',
-              'math',
-              true,
-              'Noah',
-              false
-            )
-          ).toEqual('Your access request in course "math" has been rejected');
-        });
-      });
-
       describe('incorrect data', () => {
         it('it should return empty text', () => {
           expect(
@@ -188,13 +220,6 @@ describe('NotificationsService', () => {
           ).toEqual('');
         });
       });
-    });
-  });
-
-  describe('createMail', () => {
-    it('creates the emails', () => {
-      jest.spyOn(service, 'createMail').mockReturnValueOnce(undefined);
-      expect(service.createMail('text', 'Noah', 'email')).toEqual(undefined);
     });
   });
 });
