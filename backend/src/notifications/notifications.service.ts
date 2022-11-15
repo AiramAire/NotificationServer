@@ -5,6 +5,7 @@ import { Queue } from 'bull';
 import {
   Action,
   CreatedNotificationDto,
+  NotificationForms,
   NotificationState,
   ReceivedNotificationDto,
   UserAction,
@@ -186,15 +187,34 @@ export class NotificationsService {
    * @param notification notification to send
    */
   storeNotificationInQueue(queues: string, notification: CreatedNotificationDto[]): void {
-    this.doneQueue.add(
-      queues,
-      {
-        notifications: notification,
-      },
-      {
-        attempts: 5,
-        backoff: 5000,
-      }
-    );
+    this.doneQueue.add(queues, {
+      notifications: notification,
+    });
+  }
+
+  addFormNotification(data: NotificationForms): void {
+    data.actionsType.forEach(userAction => {
+      data.forms.forEach(form => {
+        if (userAction.action.includes(Action.Email))
+          this.createMail(
+            'Please answer the following form! http://localhost:4200/form/' + form._id,
+            userAction.username,
+            userAction.email
+          );
+        if (userAction.action.includes(Action.Live_notification)) {
+          const newNotification: CreatedNotificationDto = {
+            notificationId: new Date().getTime().toString(36) + Math.random().toString(36).slice(2),
+            courseId: '',
+            courseName: '',
+            to: userAction.username,
+            from: 'Admin',
+            action: data.action,
+            text: 'Please answer the following form! URL: http://localhost:4200/form/' + form._id,
+            status: NotificationState.New,
+          };
+          this.storeNotificationInQueue('doneNotifications', [newNotification]);
+        }
+      });
+    });
   }
 }

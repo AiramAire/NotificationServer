@@ -12,7 +12,8 @@ export class CreateConsumer {
   @OnGlobalQueueActive()
   async onActive(jobId: number) {
     const job = await this.createQueue.getJob(jobId);
-    this.notificationService.addNotifications(job.data.notifications);
+    if(job.data.type === 'form') this.notificationService.addFormNotification(job.data.notifications);
+    else this.notificationService.addNotifications(job.data.notifications);
   }
 }
 

@@ -9,6 +9,7 @@ export enum UserAction {
   Unregister,
   SeeDetailsStudent,
   SeeDetailsProfessorAction,
+  SendForms,
 }
 
 export enum NotificationState {
@@ -41,4 +42,33 @@ export class CreatedNotificationDto {
   action: UserAction;
   status: NotificationState;
   text: string;
+}
+
+export class FeedbackForm {
+  _id: string;
+  dateOfCreation: string;
+  name: string;
+  openQuestions: Question[];
+  checkQuestions: Question[];
+  multipleQuestions: Question[];
+  responses: number;
+}
+
+export interface Question {
+  question: string;
+  options?: string[];
+  response?: UserResponses;
+}
+
+export interface UserResponses {
+  userId: string;
+  responses: string[];
+}
+
+export class NotificationForms {
+  action: UserAction;
+  to: string;
+  acceptAction: boolean;
+  actionsType: ActionPerUser[];
+  forms: FeedbackForm[];
 }

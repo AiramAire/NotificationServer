@@ -4,7 +4,13 @@ import { EjsAdapter } from '@nestjs-modules/mailer/dist/adapters/ejs.adapter';
 import { BullModule } from '@nestjs/bull';
 import { Test, TestingModule } from '@nestjs/testing';
 import { DoneConsumer } from './consumer-producer';
-import { Action, ReceivedNotificationDto, UserAction } from './dto/notification.dto';
+import {
+  Action,
+  FeedbackForm,
+  NotificationForms,
+  ReceivedNotificationDto,
+  UserAction,
+} from './dto/notification.dto';
 import { NotificationsService } from './notifications.service';
 
 describe('NotificationsService', () => {
@@ -50,6 +56,30 @@ describe('NotificationsService', () => {
       },
     ],
     acceptAction: true,
+  };
+
+  const form: FeedbackForm = {
+    _id: '',
+    dateOfCreation: '',
+    name: '',
+    openQuestions: [],
+    checkQuestions: [],
+    multipleQuestions: [],
+    responses: 0,
+  };
+
+  const notifForms: NotificationForms = {
+    action: 5,
+    to: '',
+    acceptAction: false,
+    actionsType: [
+      {
+        username: 'Noah',
+        action: [],
+        email: 'email',
+      },
+    ],
+    forms: [form],
   };
 
   beforeEach(async () => {
@@ -220,6 +250,38 @@ describe('NotificationsService', () => {
           ).toEqual('');
         });
       });
+    });
+  });
+
+  describe('addFormNotification', () => {
+    it('does not create any form of notification because it is not added to the action types', () => {
+      const service1 = jest.spyOn(service, 'storeNotificationInQueue');
+      const service2 = jest.spyOn(service, 'createMail');
+
+      service.addFormNotification(notifForms);
+
+      expect(service1).not.toHaveBeenCalled();
+      expect(service2).not.toHaveBeenCalled();
+    });
+
+    it('sends email notification', () => {
+      const service1 = jest.spyOn(service, 'createMail');
+      notifForms.actionsType[0].action.push(Action.Email);
+
+      service.addFormNotification(notifForms);
+
+      expect(service1).toHaveBeenCalled();
+      notifForms.actionsType[0].action = [];
+    });
+
+    it('sends live notification', () => {
+      const service1 = jest.spyOn(service, 'storeNotificationInQueue');
+      notifForms.actionsType[0].action.push(Action.Live_notification);
+
+      service.addFormNotification(notifForms);
+
+      expect(service1).toHaveBeenCalled();
+      notifForms.actionsType[0].action = [];
     });
   });
 });

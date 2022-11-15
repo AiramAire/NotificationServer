@@ -22,7 +22,7 @@ import { EjsAdapter } from '@nestjs-modules/mailer/dist/adapters/ejs.adapter';
         secure: true,
         auth: {
           user: 'academinimailtest@gmail.com',
-          pass: 'tpdrdbvplrfcgpfn',
+          pass: '',
         },
       },
       options: {
